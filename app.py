@@ -4,37 +4,48 @@ import numpy as np
 import streamlit as st
 from sklearn.ensemble import RandomForestClassifier
 
-st.title("Indian Stock Predictor")
+st.title("NSE Pro Stock Scanner")
+st.write("Find stocks likely to rise")
 
-stock = st.text_input("Enter NSE Stock (Example: RELIANCE.NS)")
+# List of major NSE stocks
+stocks = [
+    "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
+    "ITC.NS", "LT.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS",
+    "BHARTIARTL.NS", "ASIANPAINT.NS", "MARUTI.NS", "HCLTECH.NS",
+    "SUNPHARMA.NS", "TITAN.NS", "WIPRO.NS", "ULTRACEMCO.NS"
+]
 
-if stock:
-    data = yf.download(stock, period="2y")
+results = []
 
-    if len(data) > 0:
-        data['Return'] = data['Close'].pct_change()
-        data['MA10'] = data['Close'].rolling(10).mean()
-        data['MA50'] = data['Close'].rolling(50).mean()
-        data['Target'] = np.where(data['Close'].shift(-1) > data['Close'], 1, 0)
+if st.button("Scan Stocks"):
+    for stock in stocks:
+        try:
+            data = yf.download(stock, period="2y", progress=False)
 
-        data = data.dropna()
+            data['Return'] = data['Close'].pct_change()
+            data['MA10'] = data['Close'].rolling(10).mean()
+            data['MA50'] = data['Close'].rolling(50).mean()
+            data['Target'] = np.where(data['Close'].shift(-1) > data['Close'], 1, 0)
 
-        X = data[['Return', 'MA10', 'MA50']]
-        y = data['Target']
+            data = data.dropna()
 
-        model = RandomForestClassifier()
-        model.fit(X, y)
+            X = data[['Return', 'MA10', 'MA50']]
+            y = data['Target']
 
-        latest = X.iloc[-1].values.reshape(1, -1)
-        prediction = model.predict(latest)[0]
+            model = RandomForestClassifier(n_estimators=100)
+            model.fit(X, y)
 
-        st.write("Current Price:", data['Close'].iloc[-1])
+            latest = X.iloc[-1].values.reshape(1, -1)
+            prob = model.predict_proba(latest)[0][1]
 
-        if prediction == 1:
-            st.success("Prediction: Stock may go UP")
-        else:
-            st.error("Prediction: Stock may go DOWN")
+            results.append((stock, round(prob * 100, 2)))
 
-        st.line_chart(data['Close'])
-    else:
-        st.write("Invalid Stock")
+        except:
+            pass
+
+    results = sorted(results, key=lambda x: x[1], reverse=True)
+
+    st.subheader("Top Stocks Likely to Rise")
+
+    for stock, prob in results[:5]:
+        st.write(f"{stock} — {prob}% probability")
