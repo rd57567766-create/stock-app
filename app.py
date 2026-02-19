@@ -1,56 +1,58 @@
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import streamlit as st
+import requests
 from sklearn.ensemble import RandomForestClassifier
 
-st.title("NSE Legend Stock Intelligence")
+st.set_page_config(page_title="India Stock News & Prediction", layout="wide")
 
-# Major NSE Stocks (Top 50)
+st.title("India Stock News & Intelligence")
+
+# -------- NEWS SECTION --------
+st.header("Latest Market News")
+
+API_KEY = "PASTE_YOUR_NEWSAPI_KEY"
+
+url = f"https://newsapi.org/v2/everything?q=indian stock market OR NSE OR Sensex&language=en&sortBy=publishedAt&apiKey={API_KEY}"
+
+try:
+    news = requests.get(url).json()
+    articles = news["articles"][:5]
+
+    for a in articles:
+        st.subheader(a["title"])
+        st.write(a["source"]["name"])
+        st.write(a["description"])
+        st.write(a["url"])
+        st.write("---")
+
+except:
+    st.write("News not available")
+
+# -------- STOCK SCANNER --------
+st.header("Stocks Likely to Rise")
+
 stocks = [
 "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
-"ITC.NS","SBIN.NS","LT.NS","AXISBANK.NS","KOTAKBANK.NS",
-"BHARTIARTL.NS","ASIANPAINT.NS","MARUTI.NS","HCLTECH.NS",
-"SUNPHARMA.NS","TITAN.NS","WIPRO.NS","ULTRACEMCO.NS",
-"BAJFINANCE.NS","BAJAJFINSV.NS","ADANIENT.NS","ADANIPORTS.NS",
-"POWERGRID.NS","NTPC.NS","ONGC.NS","COALINDIA.NS",
-"TATAMOTORS.NS","TATASTEEL.NS","HINDUNILVR.NS",
-"INDUSINDBK.NS","JSWSTEEL.NS","GRASIM.NS",
-"TECHM.NS","DIVISLAB.NS","DRREDDY.NS",
-"CIPLA.NS","EICHERMOT.NS","HEROMOTOCO.NS",
-"BRITANNIA.NS","NESTLEIND.NS","APOLLOHOSP.NS",
-"SBILIFE.NS","HDFCLIFE.NS","ENGINERSIN.NS"
+"ITC.NS","SBIN.NS","LT.NS","AXISBANK.NS","KOTAKBANK.NS"
 ]
 
-# RSI Function
-def calculate_rsi(data, window=14):
-    delta = data['Close'].diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window).mean()
-    avg_loss = loss.rolling(window).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+results = []
 
-# Scan Button
-if st.button("Run Full Market Scan"):
-    results = []
-
+if st.button("Run Market Scan"):
     for stock in stocks:
         try:
-            data = yf.download(stock, period="2y", progress=False)
+            data = yf.download(stock, period="1y", progress=False)
 
-            # Indicators
             data['Return'] = data['Close'].pct_change()
             data['MA10'] = data['Close'].rolling(10).mean()
             data['MA50'] = data['Close'].rolling(50).mean()
-            data['RSI'] = calculate_rsi(data)
             data['Target'] = np.where(data['Close'].shift(-1) > data['Close'], 1, 0)
 
             data = data.dropna()
 
-            X = data[['Return','MA10','MA50','RSI']]
+            X = data[['Return','MA10','MA50']]
             y = data['Target']
 
             model = RandomForestClassifier(n_estimators=100)
@@ -59,40 +61,27 @@ if st.button("Run Full Market Scan"):
             latest = X.iloc[-1].values.reshape(1, -1)
             prob = model.predict_proba(latest)[0][1]
 
-            # Trend
-            trend = "Uptrend" if data['MA10'].iloc[-1] > data['MA50'].iloc[-1] else "Downtrend"
+            signal = "BUY" if prob > 0.6 else "HOLD" if prob > 0.5 else "AVOID"
 
-            # Signal
-            if prob > 0.60 and trend == "Uptrend":
-                signal = "BUY"
-            elif prob > 0.50:
-                signal = "HOLD"
-            else:
-                signal = "AVOID"
-
-            results.append((stock, round(prob*100,2), trend, signal))
+            results.append((stock, round(prob*100,2), signal))
 
         except:
             pass
 
     results = sorted(results, key=lambda x: x[1], reverse=True)
 
-    st.subheader("Top Opportunities Today")
+    st.subheader("Top Opportunities")
+    for r in results:
+        st.write(f"{r[0]} | {r[1]}% | {r[2]}")
 
-    for r in results[:10]:
-        st.write(f"{r[0]} | Probability: {r[1]}% | {r[2]} | Signal: {r[3]}")
+# -------- SINGLE STOCK --------
+st.header("Analyze Any Stock")
 
-# Individual Stock Analysis
-st.subheader("Analyze Single Stock")
+symbol = st.text_input("Enter Stock (Example: RELIANCE.NS)")
 
-single = st.text_input("Enter Stock (Example: RELIANCE.NS)")
-
-if single:
-    data = yf.download(single, period="1y")
-
+if symbol:
+    data = yf.download(symbol, period="6mo")
     data['MA50'] = data['Close'].rolling(50).mean()
     data['MA200'] = data['Close'].rolling(200).mean()
-    data['RSI'] = calculate_rsi(data)
 
     st.line_chart(data[['Close','MA50','MA200']])
-    st.write("Current RSI:", round(data['RSI'].iloc[-1],2))
